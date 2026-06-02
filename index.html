@@ -6,6 +6,9 @@
 <title>WorkLog Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
 [data-theme="dark"]{
   --bg:#0f1117;--bg2:#161b27;--surface:#1c2235;--surface2:#232a3e;--surface3:#2a3350;
@@ -553,6 +556,11 @@ select.fi{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="loading-overlay" style="position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .4s;">
+  <div style="font-size:32px">⏳</div>
+  <div style="font-size:15px;font-weight:700;color:var(--text)">Memuat data WorkLog...</div>
+  <div style="font-size:12px;color:var(--text3)">Menghubungkan ke Firebase</div>
+</div>
 
 <script>
 const MO=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -588,6 +596,22 @@ let swTicker=null;
 let modalTicker=null;
 let modalSwStart=null;
 
+// ── FIREBASE INIT ──
+const firebaseConfig = {
+  apiKey: "AIzaSyDOppLZ0MRAjfKBh9ZoUnOj6h3zyUtXcRk",
+  authDomain: "worklog-app-c2be3.firebaseapp.com",
+  databaseURL: "https://worklog-app-c2be3-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "worklog-app-c2be3",
+  storageBucket: "worklog-app-c2be3.firebasestorage.app",
+  messagingSenderId: "524936443629",
+  appId: "1:524936443629:web:1dd4c53e47243d86727ee4",
+  measurementId: "G-3CFN13M9NK"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let _saveDebounce = null;
+
 // ── PERSIST ──
 function save(){
   try{
@@ -599,10 +623,17 @@ function save(){
         dailyNotes:S.dailyNotes
       };
     }
-    localStorage.setItem('wl6_profiles',JSON.stringify(PROFILES));
-    localStorage.setItem('wl6_active',ACTIVE_PROFILE_ID||'default');
-    localStorage.setItem('wl6_pdata',JSON.stringify(PROFILE_DATA));
-    localStorage.setItem('wl6_th',S.theme);
+    // Debounce Firebase writes to avoid too many writes on rapid changes
+    if(_saveDebounce) clearTimeout(_saveDebounce);
+    _saveDebounce = setTimeout(()=>{
+      const payload = {
+        profiles: PROFILES,
+        active: ACTIVE_PROFILE_ID||'default',
+        pdata: PROFILE_DATA,
+        theme: S.theme
+      };
+      db.ref('worklog').set(payload).catch(e=>console.warn('Firebase save error',e));
+    }, 500);
   }catch(e){}
 }
 function migrateEntry(e){
@@ -627,45 +658,76 @@ function makeEmptyProfileData(){
 }
 
 function load(){
-  try{
-    const th=localStorage.getItem('wl6_th')||localStorage.getItem('wl5_th')||'dark';
-    S.theme=th;
-
-    const profRaw=localStorage.getItem('wl6_profiles');
-    const pdataRaw=localStorage.getItem('wl6_pdata');
-    const activeRaw=localStorage.getItem('wl6_active');
-
-    if(profRaw){
-      PROFILES=JSON.parse(profRaw);
-      PROFILE_DATA=pdataRaw?JSON.parse(pdataRaw):{};
-      // Ensure all profiles have data
-      PROFILES.forEach(p=>{
-        if(!PROFILE_DATA[p.id]) PROFILE_DATA[p.id]=makeEmptyProfileData();
-        // Migrate entries
-        PROFILE_DATA[p.id].entries=PROFILE_DATA[p.id].entries.map(migrateEntry);
-        if(!PROFILE_DATA[p.id].tags) PROFILE_DATA[p.id].tags=JSON.parse(JSON.stringify(DEFAULT_TAGS));
-        if(!PROFILE_DATA[p.id].dailyNotes) PROFILE_DATA[p.id].dailyNotes={};
-      });
-      ACTIVE_PROFILE_ID=activeRaw&&PROFILES.find(p=>p.id===activeRaw)?activeRaw:PROFILES[0].id;
-    } else {
-      // Migration from wl5 single-profile
-      const defaultId='prof_default';
-      let entries=[];
-      let tags=JSON.parse(JSON.stringify(DEFAULT_TAGS));
-      let dailyNotes={};
-      let profileName='Profil Utama';
-      const raw=localStorage.getItem('wl5_e')||localStorage.getItem('wl4_e')||localStorage.getItem('wl3_e');
-      if(raw) entries=JSON.parse(raw).map(migrateEntry);
-      const t=localStorage.getItem('wl5_t')||localStorage.getItem('wl4_t')||localStorage.getItem('wl3_t');
-      if(t) tags=JSON.parse(t);
-      const dn=localStorage.getItem('wl5_dn');if(dn) dailyNotes=JSON.parse(dn);
-      const pn=localStorage.getItem('wl5_pn');if(pn) profileName=pn;
-      PROFILES=[{id:defaultId,name:profileName}];
-      PROFILE_DATA[defaultId]={entries,tags,dailyNotes};
-      ACTIVE_PROFILE_ID=defaultId;
-    }
-    loadProfileIntoS(ACTIVE_PROFILE_ID);
-  }catch(e){console.warn('Load failed',e);}
+  db.ref('worklog').once('value').then(snapshot=>{
+    try{
+      const data = snapshot.val();
+      if(data){
+        S.theme = data.theme||'dark';
+        PROFILES = data.profiles||[];
+        PROFILE_DATA = data.pdata||{};
+        const activeRaw = data.active;
+        // Ensure all profiles have data & migrate entries
+        PROFILES.forEach(p=>{
+          if(!PROFILE_DATA[p.id]) PROFILE_DATA[p.id]=makeEmptyProfileData();
+          PROFILE_DATA[p.id].entries=PROFILE_DATA[p.id].entries.map(migrateEntry);
+          if(!PROFILE_DATA[p.id].tags) PROFILE_DATA[p.id].tags=JSON.parse(JSON.stringify(DEFAULT_TAGS));
+          if(!PROFILE_DATA[p.id].dailyNotes) PROFILE_DATA[p.id].dailyNotes={};
+        });
+        if(!PROFILES.length){
+          const defaultId='prof_default';
+          PROFILES=[{id:defaultId,name:'Profil Utama'}];
+          PROFILE_DATA[defaultId]=makeEmptyProfileData();
+          ACTIVE_PROFILE_ID=defaultId;
+        } else {
+          ACTIVE_PROFILE_ID=activeRaw&&PROFILES.find(p=>p.id===activeRaw)?activeRaw:PROFILES[0].id;
+        }
+      } else {
+        // First time: try migrate from localStorage, else create default
+        const defaultId='prof_default';
+        let entries=[],tags=JSON.parse(JSON.stringify(DEFAULT_TAGS)),dailyNotes={},profileName='Profil Utama';
+        const raw=localStorage.getItem('wl6_e')||localStorage.getItem('wl5_e')||localStorage.getItem('wl4_e');
+        if(raw) entries=JSON.parse(raw).map(migrateEntry);
+        const t=localStorage.getItem('wl6_t')||localStorage.getItem('wl5_t')||localStorage.getItem('wl4_t');
+        if(t) tags=JSON.parse(t);
+        const dn=localStorage.getItem('wl6_dn')||localStorage.getItem('wl5_dn');if(dn) dailyNotes=JSON.parse(dn);
+        const thRaw=localStorage.getItem('wl6_th')||localStorage.getItem('wl5_th')||'dark'; S.theme=thRaw;
+        // Check wl6 multi-profile format in localStorage
+        const profRaw=localStorage.getItem('wl6_profiles');
+        const pdataRaw=localStorage.getItem('wl6_pdata');
+        if(profRaw){
+          PROFILES=JSON.parse(profRaw);
+          PROFILE_DATA=pdataRaw?JSON.parse(pdataRaw):{};
+          PROFILES.forEach(p=>{
+            if(!PROFILE_DATA[p.id]) PROFILE_DATA[p.id]=makeEmptyProfileData();
+            PROFILE_DATA[p.id].entries=PROFILE_DATA[p.id].entries.map(migrateEntry);
+            if(!PROFILE_DATA[p.id].tags) PROFILE_DATA[p.id].tags=JSON.parse(JSON.stringify(DEFAULT_TAGS));
+            if(!PROFILE_DATA[p.id].dailyNotes) PROFILE_DATA[p.id].dailyNotes={};
+          });
+          const activeRaw2=localStorage.getItem('wl6_active');
+          ACTIVE_PROFILE_ID=activeRaw2&&PROFILES.find(p=>p.id===activeRaw2)?activeRaw2:PROFILES[0].id;
+        } else {
+          PROFILES=[{id:defaultId,name:profileName}];
+          PROFILE_DATA[defaultId]={entries,tags,dailyNotes};
+          ACTIVE_PROFILE_ID=defaultId;
+        }
+      }
+      loadProfileIntoS(ACTIVE_PROFILE_ID);
+    }catch(e){console.warn('Load failed',e);}
+    const overlay=document.getElementById('loading-overlay');
+    if(overlay){overlay.style.opacity='0';setTimeout(()=>overlay.style.display='none',400);}
+    applyTheme();tick();setInterval(tick,1000);
+    const today=todayLocal(),f=new Date();f.setDate(f.getDate()-29);const fromStr=dk(f);
+    document.getElementById('stats-from').value=fromStr;document.getElementById('stats-to').value=today;
+    document.getElementById('dist-from').value=fromStr;document.getElementById('dist-to').value=today;
+    renderProfileBar();
+    refreshView('daily');updateLabels();
+    if(S.entries.some(e=>e.swRunning)) startSwTicker();
+  }).catch(e=>{
+    console.warn('Firebase load error',e);
+    const overlay=document.getElementById('loading-overlay');
+    if(overlay){overlay.style.opacity='0';setTimeout(()=>overlay.style.display='none',400);}
+    toast('Gagal memuat data dari server','err');
+  });
 }
 
 function loadProfileIntoS(profileId){
@@ -1498,13 +1560,7 @@ function toast(msg,type=''){
 
 // ── INIT ──
 function init(){
-  load();applyTheme();tick();setInterval(tick,1000);
-  const today=todayLocal(),f=new Date();f.setDate(f.getDate()-29);const fromStr=dk(f);
-  document.getElementById('stats-from').value=fromStr;document.getElementById('stats-to').value=today;
-  document.getElementById('dist-from').value=fromStr;document.getElementById('dist-to').value=today;
-  renderProfileBar();
-  refreshView('daily');updateLabels();
-  if(S.entries.some(e=>e.swRunning)) startSwTicker();
+  load(); // Firebase async load handles the rest
 }
 init();
 </script>
