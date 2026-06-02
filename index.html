@@ -684,14 +684,28 @@ function load() {
       PROFILES.forEach(p => {
         if (!PROFILE_DATA[p.id]) PROFILE_DATA[p.id] = makeEmptyProfileData();
         
-        // Cek dulu apakah entries ada sebelum di-map agar tidak error
-        if (PROFILE_DATA[p.id].entries && Array.isArray(PROFILE_DATA[p.id].entries)) {
-          PROFILE_DATA[p.id].entries = PROFILE_DATA[p.id].entries.map(migrateEntry);
+        // Firebase menyimpan array sebagai object {0:..., 1:...}, konversi balik ke array
+        let entries = PROFILE_DATA[p.id].entries;
+        if (entries && !Array.isArray(entries)) {
+          entries = Object.values(entries);
+        }
+        if (entries && Array.isArray(entries) && entries.length > 0) {
+          PROFILE_DATA[p.id].entries = entries.map(migrateEntry);
         } else {
           PROFILE_DATA[p.id].entries = [];
         }
         
-        if (!PROFILE_DATA[p.id].tags) PROFILE_DATA[p.id].tags = JSON.parse(JSON.stringify(DEFAULT_TAGS));
+        // Sama untuk tags
+        let tags = PROFILE_DATA[p.id].tags;
+        if (tags && !Array.isArray(tags)) {
+          tags = Object.values(tags);
+        }
+        if (tags && Array.isArray(tags) && tags.length > 0) {
+          PROFILE_DATA[p.id].tags = tags;
+        } else {
+          PROFILE_DATA[p.id].tags = JSON.parse(JSON.stringify(DEFAULT_TAGS));
+        }
+        
         if (!PROFILE_DATA[p.id].dailyNotes) PROFILE_DATA[p.id].dailyNotes = {};
       });
 
