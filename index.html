@@ -700,6 +700,7 @@ function load() {
       
       // Update tampilan aplikasi setelah data berhasil didapatkan
       refreshAll();
+      hideLoading();
       if (S.entries && S.entries.some(e => e.swRunning)) startSwTicker();
 
     }).catch((error) => {
@@ -724,12 +725,19 @@ function load() {
       }
       loadProfileIntoS(ACTIVE_PROFILE_ID);
       refreshAll();
+      hideLoading();
     });
 
   } catch(e) {
     console.warn('Load fatal error', e);
     refreshAll();
+    hideLoading();
   }
+}
+
+function hideLoading(){
+  const ov = document.getElementById('loading-overlay');
+  if(ov){ ov.style.opacity='0'; setTimeout(()=>{ ov.style.display='none'; }, 400); }
 }
 
 function loadProfileIntoS(profileId){
