@@ -657,77 +657,79 @@ function makeEmptyProfileData(){
   return{entries:[],tags:JSON.parse(JSON.stringify(DEFAULT_TAGS)),dailyNotes:{}};
 }
 
-function load(){
-  db.ref('worklog').once('value').then(snapshot=>{
-    try{
-      const data = snapshot.val();
-      if(data){
-        S.theme = data.theme||'dark';
-        PROFILES = data.profiles||[];
-        PROFILE_DATA = data.pdata||{};
-        const activeRaw = data.active;
-        // Ensure all profiles have data & migrate entries
-        PROFILES.forEach(p=>{
-          if(!PROFILE_DATA[p.id]) PROFILE_DATA[p.id]=makeEmptyProfileData();
-          PROFILE_DATA[p.id].entries=PROFILE_DATA[p.id].entries.map(migrateEntry);
-          if(!PROFILE_DATA[p.id].tags) PROFILE_DATA[p.id].tags=JSON.parse(JSON.stringify(DEFAULT_TAGS));
-          if(!PROFILE_DATA[p.id].dailyNotes) PROFILE_DATA[p.id].dailyNotes={};
-        });
-        if(!PROFILES.length){
-          const defaultId='prof_default';
-          PROFILES=[{id:defaultId,name:'Profil Utama'}];
-          PROFILE_DATA[defaultId]=makeEmptyProfileData();
-          ACTIVE_PROFILE_ID=defaultId;
-        } else {
-          ACTIVE_PROFILE_ID=activeRaw&&PROFILES.find(p=>p.id===activeRaw)?activeRaw:PROFILES[0].id;
-        }
+function load() {
+  try {
+    // Muat tema gelap/terang dari local storage terlebih dahulu agar layout stabil
+    const th = localStorage.getItem('wl6_th') || 'dark';
+    S.theme = th;
+    
+    // AMBIL DATA DARI FIREBASE REALTIME DATABASE CLOUD
+    db.ref('worklog_dashboard_data').once('value').then((snapshot) => {
+      const cloudData = snapshot.val();
+
+      if (cloudData && cloudData.profiles) {
+        // Jika data cloud tersedia, gunakan data dari cloud Firebase
+        PROFILES = cloudData.profiles;
+        PROFILE_DATA = cloudData.profileData || {};
+        ACTIVE_PROFILE_ID = cloudData.activeProfileId || PROFILES[0].id;
       } else {
-        // First time: try migrate from localStorage, else create default
-        const defaultId='prof_default';
-        let entries=[],tags=JSON.parse(JSON.stringify(DEFAULT_TAGS)),dailyNotes={},profileName='Profil Utama';
-        const raw=localStorage.getItem('wl6_e')||localStorage.getItem('wl5_e')||localStorage.getItem('wl4_e');
-        if(raw) entries=JSON.parse(raw).map(migrateEntry);
-        const t=localStorage.getItem('wl6_t')||localStorage.getItem('wl5_t')||localStorage.getItem('wl4_t');
-        if(t) tags=JSON.parse(t);
-        const dn=localStorage.getItem('wl6_dn')||localStorage.getItem('wl5_dn');if(dn) dailyNotes=JSON.parse(dn);
-        const thRaw=localStorage.getItem('wl6_th')||localStorage.getItem('wl5_th')||'dark'; S.theme=thRaw;
-        // Check wl6 multi-profile format in localStorage
-        const profRaw=localStorage.getItem('wl6_profiles');
-        const pdataRaw=localStorage.getItem('wl6_pdata');
-        if(profRaw){
-          PROFILES=JSON.parse(profRaw);
-          PROFILE_DATA=pdataRaw?JSON.parse(pdataRaw):{};
-          PROFILES.forEach(p=>{
-            if(!PROFILE_DATA[p.id]) PROFILE_DATA[p.id]=makeEmptyProfileData();
-            PROFILE_DATA[p.id].entries=PROFILE_DATA[p.id].entries.map(migrateEntry);
-            if(!PROFILE_DATA[p.id].tags) PROFILE_DATA[p.id].tags=JSON.parse(JSON.stringify(DEFAULT_TAGS));
-            if(!PROFILE_DATA[p.id].dailyNotes) PROFILE_DATA[p.id].dailyNotes={};
-          });
-          const activeRaw2=localStorage.getItem('wl6_active');
-          ACTIVE_PROFILE_ID=activeRaw2&&PROFILES.find(p=>p.id===activeRaw2)?activeRaw2:PROFILES[0].id;
+        // Jika Firebase kosong, pakai setelan default awal
+        const defaultId = 'prof_default';
+        PROFILES = [{id: defaultId, name: 'Profil Utama'}];
+        PROFILE_DATA[defaultId] = makeEmptyProfileData();
+        ACTIVE_PROFILE_ID = defaultId;
+      }
+
+      // Pastikan semua struktur profil termigrasi dengan aman
+      PROFILES.forEach(p => {
+        if (!PROFILE_DATA[p.id]) PROFILE_DATA[p.id] = makeEmptyProfileData();
+        
+        // PERBAIKAN DI SINI: Cek dulu apakah entries ada sebelum di-map agar tidak error
+        if (PROFILE_DATA[p.id].entries && Array.isArray(PROFILE_DATA[p.id].entries)) {
+          PROFILE_DATA[p.id].entries = PROFILE_DATA[p.id].entries.map(migrateEntry);
         } else {
-          PROFILES=[{id:defaultId,name:profileName}];
-          PROFILE_DATA[defaultId]={entries,tags,dailyNotes};
-          ACTIVE_PROFILE_ID=defaultId;
+          PROFILE_DATA[p.id].entries = [];
         }
+        
+        if (!PROFILE_DATA[p.id].tags) PROFILE_DATA[p.id].tags = JSON.parse(JSON.stringify(DEFAULT_TAGS));
+        if (!PROFILE_DATA[p.id].dailyNotes) PROFILE_DATA[p.id].dailyNotes = {};
+      });
+
+      // Sinkronkan data ke dalam aplikasi
+      loadProfileIntoS(ACTIVE_PROFILE_ID);
+      
+      // Update tampilan aplikasi setelah data berhasil didapatkan
+      refreshAll();
+      if (S.entries && S.entries.some(e => e.swRunning)) startSwTicker();
+
+    }).catch((error) => {
+      console.warn('Gagal koneksi ke Firebase, mengambil dari cadangan LocalStorage...', error);
+      
+      // Cadangan lokal jika internet offline
+      const profRaw = localStorage.getItem('wl6_profiles');
+      const pdataRaw = localStorage.getItem('wl6_pdata');
+      const activeRaw = localStorage.getItem('wl6_active');
+      if (profRaw) {
+        PROFILES = JSON.parse(profRaw);
+        PROFILE_DATA = pdataRaw ? JSON.parse(pdataRaw) : {};
+        PROFILES.forEach(p => {
+          if (!PROFILE_DATA[p.id]) PROFILE_DATA[p.id] = makeEmptyProfileData();
+          if (PROFILE_DATA[p.id].entries && Array.isArray(PROFILE_DATA[p.id].entries)) {
+            PROFILE_DATA[p.id].entries = PROFILE_DATA[p.id].entries.map(migrateEntry);
+          } else {
+            PROFILE_DATA[p.id].entries = [];
+          }
+        });
+        ACTIVE_PROFILE_ID = activeRaw && PROFILES.find(p => p.id === activeRaw) ? activeRaw : PROFILES[0].id;
       }
       loadProfileIntoS(ACTIVE_PROFILE_ID);
-    }catch(e){console.warn('Load failed',e);}
-    const overlay=document.getElementById('loading-overlay');
-    if(overlay){overlay.style.opacity='0';setTimeout(()=>overlay.style.display='none',400);}
-    applyTheme();tick();setInterval(tick,1000);
-    const today=todayLocal(),f=new Date();f.setDate(f.getDate()-29);const fromStr=dk(f);
-    document.getElementById('stats-from').value=fromStr;document.getElementById('stats-to').value=today;
-    document.getElementById('dist-from').value=fromStr;document.getElementById('dist-to').value=today;
-    renderProfileBar();
-    refreshView('daily');updateLabels();
-    if(S.entries.some(e=>e.swRunning)) startSwTicker();
-  }).catch(e=>{
-    console.warn('Firebase load error',e);
-    const overlay=document.getElementById('loading-overlay');
-    if(overlay){overlay.style.opacity='0';setTimeout(()=>overlay.style.display='none',400);}
-    toast('Gagal memuat data dari server','err');
-  });
+      refreshAll();
+    });
+
+  } catch(e) {
+    console.warn('Load fatal error', e);
+    refreshAll();
+  }
 }
 
 function loadProfileIntoS(profileId){
