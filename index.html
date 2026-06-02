@@ -546,10 +546,14 @@ select.fi{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 </div>
 <!-- PROFILE EDIT MODAL -->
 <div class="ov hidden" id="m-profile-edit">
-  <div class="modal" style="width:360px;">
+  <div class="modal" style="width:400px;">
     <div class="mh"><div class="mt">✏️ Edit Profil</div><button class="mx" onclick="closeM('m-profile-edit')">✕</button></div>
     <div class="mb">
-      <div class="fg"><label class="fl">Nama Profil</label><input class="fi" id="prof-edit-name" placeholder="Nama profil..."></div>
+      <div class="fg" style="margin-bottom:12px;"><label class="fl">Nama Profil</label><input class="fi" id="prof-edit-name" placeholder="Nama profil..."></div>
+      <div class="fg" style="margin-bottom:8px;"><label class="fl">Tag (opsional)</label><input class="fi" id="prof-edit-tag" placeholder="Contoh: Editor, Desainer..."></div>
+      <div class="fg"><label class="fl">Warna Tag</label>
+        <div class="swatches" id="prof-edit-swatches" style="margin-top:6px;"></div>
+      </div>
     </div>
     <div class="mf"><button class="btn" onclick="closeM('m-profile-edit')">Batal</button><button class="btn p" onclick="saveProfileEdit()">Simpan</button></div>
   </div>
@@ -592,6 +596,7 @@ let S={
 };
 let CH={};
 let pickedCol=PAL[0];
+let pickedProfCol=PAL[0];
 let swTicker=null;
 let modalTicker=null;
 let modalSwStart=null;
@@ -795,12 +800,15 @@ function renderProfileBar(){
   const sel=document.getElementById('prof-sel-main');
   if(sel){
     sel.innerHTML=PROFILES.map((p,i)=>
-      `<option value="${p.id}"${p.id===ACTIVE_PROFILE_ID?' selected':''}>${i===0?'👑 ':''+(i+1)+'. '}${p.name}</option>`).join('');
+      `<option value="${p.id}"${p.id===ACTIVE_PROFILE_ID?' selected':''}>${(i+1)+'. '}${p.name}</option>`).join('');
   }
   const badge=document.getElementById('prof-badge-main');
   if(badge){
     const spv=isSPV();
-    badge.textContent=spv?'👑 SPV':getCurrentProfileName();
+    const curP=PROFILES.find(x=>x.id===ACTIVE_PROFILE_ID);
+    if(spv){badge.textContent='SPV';badge.style.background='';badge.style.color='';}
+    else if(curP&&curP.tag){badge.textContent=curP.tag;badge.style.background=curP.tagColor+'22';badge.style.color=curP.tagColor;badge.style.borderColor=curP.tagColor+'44';}
+    else{badge.textContent=getCurrentProfileName();badge.style.background='';badge.style.color='';}
     badge.className='prof-badge'+(spv?' spv':'');
   }
   // Update SPV section visibility
@@ -821,7 +829,7 @@ function renderProfList(){
   if(!el)return;
   el.innerHTML=PROFILES.map((p,i)=>`
     <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface2);border-radius:8px;margin-bottom:6px;border:1px solid ${p.id===ACTIVE_PROFILE_ID?'var(--accent)':`var(--border)`};">
-      <span style="font-size:12px;font-weight:700;color:${i===0?'var(--accent4)':`var(--text)`};">${i===0?'👑':'👤'} ${p.name}</span>
+      <span style="font-size:12px;font-weight:700;color:var(--text);">${p.name}</span>${p.tag?`<span style="font-size:10px;background:${p.tagColor||'#d4a017'}22;color:${p.tagColor||'#d4a017'};border:1px solid ${p.tagColor||'#d4a017'}44;border-radius:12px;padding:2px 8px;font-weight:700;">${esc(p.tag)}</span>`:''}
       ${i===0?'<span style="font-size:10px;background:var(--accent4)22;color:var(--accent4);border:1px solid var(--accent4)44;border-radius:12px;padding:2px 8px;font-weight:700;">SPV</span>':''}
       <div style="margin-left:auto;display:flex;gap:6px;">
         <button class="btn" onclick="editProfileModal('${p.id}')" style="font-size:11px;padding:4px 8px;">✏️</button>
@@ -851,13 +859,22 @@ function editProfileModal(id){
   PROFILE_EDIT_ID=id;
   const p=PROFILES.find(x=>x.id===id);
   document.getElementById('prof-edit-name').value=p?p.name:'';
+  document.getElementById('prof-edit-tag').value=p&&p.tag?p.tag:'';
+  pickedProfCol=p&&p.tagColor?p.tagColor:PAL[0];
+  renderProfEditSwatches();
   openM('m-profile-edit');
 }
+function renderProfEditSwatches(){
+  document.getElementById('prof-edit-swatches').innerHTML=PAL.map(c=>
+    `<div class="swatch${c===pickedProfCol?' sel':''}" style="background:${c}" onclick="pickProfCol('${c}')"></div>`).join('');
+}
+function pickProfCol(c){pickedProfCol=c;renderProfEditSwatches();}
 function saveProfileEdit(){
   const name=document.getElementById('prof-edit-name').value.trim();
   if(!name){toast('Nama kosong','err');return;}
+  const tag=document.getElementById('prof-edit-tag').value.trim();
   const p=PROFILES.find(x=>x.id===PROFILE_EDIT_ID);
-  if(p) p.name=name;
+  if(p){p.name=name;p.tag=tag;p.tagColor=tag?pickedProfCol:'';}
   save();closeM('m-profile-edit');renderProfList();renderProfileBar();refreshAll();toast('Profil diperbarui ✓','ok');
 }
 
@@ -870,7 +887,7 @@ function renderSPVDaily(){
   const otherProfiles=PROFILES.slice(1);
   if(!otherProfiles.length){sec.style.display='none';return;}
   sec.style.display='block';
-  let html='<div class="spv-title">👑 Ringkasan SPV — Laporan Harian Semua Profil</div>';
+  let html='<div class="spv-title">Ringkasan SPV — Laporan Harian Semua Profil</div>';
   otherProfiles.forEach(p=>{
     const pd=PROFILE_DATA[p.id];
     if(!pd) return;
@@ -1024,6 +1041,8 @@ function filtered(view){
 
 // ── STATS CARDS ──
 function renderStats(view){
+  const now=new Date();
+  const buatPadaJam=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
   const rows=viewRows(view);
   const totalSec=rows.reduce((a,r)=>a+toSec(r.min,r.sec),0);
   const taskCount=rows.length;
@@ -1308,7 +1327,9 @@ function delTag(name){
 function buildSPVReport(){
   const d=S.cursor.daily;
   const today=dk(d);
+  const now=new Date();
   const periodLbl=`${DY[d.getDay()]}, ${d.getDate()} ${MO[d.getMonth()]} ${d.getFullYear()}`;
+  const buatPadaJam=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
   let allSections='';
   PROFILES.forEach((p,idx)=>{
     const pd=PROFILE_DATA[p.id]||{entries:[],tags:[],dailyNotes:{}};
@@ -1322,18 +1343,19 @@ function buildSPVReport(){
     }).join('\n'):'<li style="color:#999">Tidak ada aktivitas</li>';
     const noteText=idx===0?(S.dailyNotes[today]||''):(pd.dailyNotes&&pd.dailyNotes[today]||'');
     const noteHtml=noteText?`<p style="margin-top:10px;color:#666;font-style:italic;white-space:pre-wrap;">${esc(noteText)}</p>`:'';
-    const badge=idx===0?'<span style="background:#d4a01722;color:#d4a017;border:1px solid #d4a01744;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:700;">👑 SPV</span>':'';
+    // Tag profil custom (poin 5) — pakai p.tag dan p.tagColor kalau ada
+    const profTag=p.tag?`<span style="background:${p.tagColor||'#d4a017'}22;color:${p.tagColor||'#d4a017'};border:1px solid ${p.tagColor||'#d4a017'}44;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:700;">${esc(p.tag)}</span> `:'';
     allSections+=`<div style="margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid #ddd;">
-      <h2 style="font-size:16px;font-weight:800;margin-bottom:4px;">${badge} ${esc(p.name)} (${h} jam ${m} menit ${s} detik)</h2>
+      <h2 style="font-size:16px;font-weight:800;margin-bottom:4px;">${profTag}${esc(p.name)} (${h} jam ${m} menit ${s} detik)</h2>
       <ul style="padding-left:20px;margin-top:8px;">${bullets}</ul>${noteHtml}
-      <p style="margin-top:8px;font-size:12px;color:#888;">${rows.length} task dikerjakan</p>
+      <p style="margin-top:8px;font-size:12px;color:#888;">${rows.length} task dikerjakan — laporan dibuat pada ${buatPadaJam}</p>
     </div>`;
   });
-  const html=`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Laporan SPV Harian</title>
+  const html=`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Laporan Harian</title>
 <style>body{font-family:'Segoe UI',sans-serif;max-width:780px;margin:40px auto;padding:20px;color:#1a2040;line-height:1.7;}h1{font-size:22px;font-weight:800;margin-bottom:4px;}.sub{color:#888;font-size:13px;margin-bottom:24px;}ul li{margin-bottom:6px;font-size:14px;}a{color:#3a68e0;}strong{color:#1a2040;}</style>
 </head><body>
-<h1>📋 Laporan Harian SPV</h1>
-<div class="sub">${periodLbl} · ${PROFILES.length} Profil</div>
+<h1>Laporan Harian</h1>
+<div class="sub">${periodLbl}</div>
 ${allSections}
 </body></html>`;
   const blob=new Blob([html],{type:'text/html'});
@@ -1369,7 +1391,7 @@ function buildReport(view){
 <div class="sub">${periodLbl}</div>
 <ul>${bullets}</ul>
 ${noteHtml}
-<div class="footer">${taskCount} task, ${cardCount} card dikerjakan</div>
+<div class="footer">${taskCount} task, ${cardCount} card dikerjakan — laporan dibuat pada ${buatPadaJam}</div>
 </body></html>`;
   const blob=new Blob([html],{type:'text/html'});
   window.open(URL.createObjectURL(blob),'_blank');
