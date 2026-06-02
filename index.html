@@ -710,7 +710,7 @@ function load() {
       });
 
       // Sinkronkan data ke dalam aplikasi
-      loadProfileIntoS(ACTIVE_PROFILE_ID);
+      loadProfileIntoS(ACTIVE_PROFILE_ID, true);
       
       // Update tampilan aplikasi setelah data berhasil didapatkan
       refreshAll();
@@ -737,7 +737,7 @@ function load() {
         });
         ACTIVE_PROFILE_ID = activeRaw && PROFILES.find(p => p.id === activeRaw) ? activeRaw : PROFILES[0].id;
       }
-      loadProfileIntoS(ACTIVE_PROFILE_ID);
+      loadProfileIntoS(ACTIVE_PROFILE_ID, true);
       refreshAll();
       hideLoading();
     });
@@ -754,9 +754,9 @@ function hideLoading(){
   if(ov){ ov.style.opacity='0'; setTimeout(()=>{ ov.style.display='none'; }, 400); }
 }
 
-function loadProfileIntoS(profileId){
-  // Save current profile data before switching
-  if(ACTIVE_PROFILE_ID&&PROFILE_DATA[ACTIVE_PROFILE_ID]){
+function loadProfileIntoS(profileId, skipSave){
+  // Save current profile data before switching — tapi skip saat pertama load
+  if(!skipSave && ACTIVE_PROFILE_ID && PROFILE_DATA[ACTIVE_PROFILE_ID]){
     PROFILE_DATA[ACTIVE_PROFILE_ID]={
       entries:S.entries,
       tags:S.tags,
