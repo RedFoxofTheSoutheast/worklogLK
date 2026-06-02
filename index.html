@@ -684,7 +684,7 @@ function load() {
       PROFILES.forEach(p => {
         if (!PROFILE_DATA[p.id]) PROFILE_DATA[p.id] = makeEmptyProfileData();
         
-        // PERBAIKAN DI SINI: Cek dulu apakah entries ada sebelum di-map agar tidak error
+        // Cek dulu apakah entries ada sebelum di-map agar tidak error
         if (PROFILE_DATA[p.id].entries && Array.isArray(PROFILE_DATA[p.id].entries)) {
           PROFILE_DATA[p.id].entries = PROFILE_DATA[p.id].entries.map(migrateEntry);
         } else {
