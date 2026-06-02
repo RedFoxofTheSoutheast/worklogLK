@@ -628,11 +628,11 @@ function save(){
     _saveDebounce = setTimeout(()=>{
       const payload = {
         profiles: PROFILES,
-        active: ACTIVE_PROFILE_ID||'default',
-        pdata: PROFILE_DATA,
+        activeProfileId: ACTIVE_PROFILE_ID||'default',
+        profileData: PROFILE_DATA,
         theme: S.theme
       };
-      db.ref('worklog').set(payload).catch(e=>console.warn('Firebase save error',e));
+      db.ref('worklog_dashboard_data').set(payload).catch(e=>console.warn('Firebase save error',e));
     }, 500);
   }catch(e){}
 }
