@@ -1347,6 +1347,20 @@ function delTag(name){
 
 // ── BUILD REPORT ──
 
+function autoLockDailyEntries(){
+  const today=dk(S.cursor.daily);
+  S.entries.forEach(e=>{
+    if(e.date===today){
+      if(e.swRunning){
+        e.swElapsed=(e.swElapsed||0)+(Date.now()-e.swStart)/1000;
+        e.swRunning=false; e.swStart=null;
+        const sec=Math.floor(e.swElapsed); e.min=Math.floor(sec/60); e.sec=sec%60;
+      }
+      e.swLocked=true;
+    }
+  });
+}
+
 function buildSPVReport(){
   const d=S.cursor.daily;
   const today=dk(d);
