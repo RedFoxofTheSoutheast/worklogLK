@@ -1126,7 +1126,7 @@ function renderTbl(view){
       const editBtn=`<button class="rb" onclick="editEntry('${r.id}')" title="Edit">✏</button>`;
       const delBtn=`<button class="rb dl" onclick="delEntry('${r.id}')" title="Hapus">🗑</button>`;
       return`<tr class="${cls}" id="row-${r.id}">
-        <td class="cbw"><input type="checkbox" ${chk} onchange="togSel('${view}','${r.id}',this.checked,event)"></td>
+        <td class="cbw"><input type="checkbox" ${chk} onclick="togSel('${view}','${r.id}',this.checked,event)"></td>
         ${dTd}
         <td class="tp">${esc(r.taskName)||'—'}</td>
         <td>${cardDisp}</td>
