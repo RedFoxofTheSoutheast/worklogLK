@@ -587,7 +587,7 @@ let PROFILE_EDIT_ID = null;
 
 let S={
   entries:[],tags:JSON.parse(JSON.stringify(DEFAULT_TAGS)),
-  dailyNotes:{},page:'daily',theme:'dark',
+  dailyNotes:{},reportTimestamps:{},page:'daily',theme:'dark',
   cursor:{daily:new Date(),weekly:new Date(),monthly:new Date(),yearly:new Date()},
   sort:{daily:{col:null,dir:1},weekly:{col:'date',dir:1},monthly:{col:'date',dir:1},yearly:{col:'date',dir:1}},
   tagF:{daily:null,weekly:null,monthly:null,yearly:null},
@@ -618,17 +618,17 @@ const db = firebase.database();
 let _saveDebounce = null;
 
 // ── PERSIST ──
+function syncSToProfileData(){
+  if(ACTIVE_PROFILE_ID && PROFILE_DATA[ACTIVE_PROFILE_ID]){
+    PROFILE_DATA[ACTIVE_PROFILE_ID].entries = S.entries;
+    PROFILE_DATA[ACTIVE_PROFILE_ID].tags = S.tags;
+    PROFILE_DATA[ACTIVE_PROFILE_ID].dailyNotes = S.dailyNotes;
+    PROFILE_DATA[ACTIVE_PROFILE_ID].reportTimestamps = S.reportTimestamps;
+  }
+}
 function save(){
   try{
-    // Save current profile data back to PROFILE_DATA
-    if(ACTIVE_PROFILE_ID){
-      PROFILE_DATA[ACTIVE_PROFILE_ID]={
-        entries:S.entries,
-        tags:S.tags,
-        dailyNotes:S.dailyNotes
-      };
-    }
-    // Debounce Firebase writes to avoid too many writes on rapid changes
+    syncSToProfileData();
     if(_saveDebounce) clearTimeout(_saveDebounce);
     _saveDebounce = setTimeout(()=>{
       const payload = {
@@ -637,9 +637,11 @@ function save(){
         pdata: PROFILE_DATA,
         theme: S.theme
       };
-      db.ref('worklog').set(payload).catch(e=>console.warn('Firebase save error',e));
-    }, 500);
-  }catch(e){}
+      db.ref('worklog').set(payload).then(()=>{
+        console.log('Firebase save OK');
+      }).catch(e=>console.warn('Firebase save error',e));
+    }, 600);
+  }catch(e){ console.warn('save() error',e); }
 }
 function migrateEntry(e){
   if(e.project!==undefined&&e.taskName===undefined){
@@ -659,7 +661,7 @@ function migrateEntry(e){
 }
 
 function makeEmptyProfileData(){
-  return{entries:[],tags:JSON.parse(JSON.stringify(DEFAULT_TAGS)),dailyNotes:{}};
+  return{entries:[],tags:JSON.parse(JSON.stringify(DEFAULT_TAGS)),dailyNotes:{},reportTimestamps:{}};
 }
 
 function load() {
@@ -678,11 +680,13 @@ function load() {
         PROFILE_DATA = cloudData.pdata || {};
         ACTIVE_PROFILE_ID = cloudData.active || PROFILES[0].id;
       } else {
-        // Jika Firebase kosong, pakai setelan default awal
-        const defaultId = 'prof_default';
-        PROFILES = [{id: defaultId, name: 'Profil Utama'}];
-        PROFILE_DATA[defaultId] = makeEmptyProfileData();
-        ACTIVE_PROFILE_ID = defaultId;
+        // Jika Firebase kosong, pakai 3 profil preset default
+        const p1={id:'prof_spv',name:'SPV',tag:'SPV',tagColor:'#f9c846'};
+        const p2={id:'prof_cw',name:'Copywriter & Social Media Strategist',tag:'CW/SMS',tagColor:'#3dd9a4'};
+        const p3={id:'prof_gd',name:'Graphic Designer',tag:'Designer',tagColor:'#c77dff'};
+        PROFILES=[p1,p2,p3];
+        [p1,p2,p3].forEach(p=>{ PROFILE_DATA[p.id]=makeEmptyProfileData(); });
+        ACTIVE_PROFILE_ID=p1.id;
       }
 
       // Pastikan semua struktur profil termigrasi dengan aman
@@ -712,6 +716,7 @@ function load() {
         }
         
         if (!PROFILE_DATA[p.id].dailyNotes) PROFILE_DATA[p.id].dailyNotes = {};
+        if (!PROFILE_DATA[p.id].reportTimestamps) PROFILE_DATA[p.id].reportTimestamps = {};
       });
 
       // Sinkronkan data ke dalam aplikasi
@@ -773,6 +778,7 @@ function loadProfileIntoS(profileId, skipSave){
   S.entries=pd.entries;
   S.tags=pd.tags;
   S.dailyNotes=pd.dailyNotes;
+  S.reportTimestamps=pd.reportTimestamps||{};
   // Reset selection and filters on profile switch
   ['daily','weekly','monthly','yearly'].forEach(v=>{
     S.sel[v]=new Set();
@@ -1120,7 +1126,7 @@ function renderTbl(view){
       const editBtn=`<button class="rb" onclick="editEntry('${r.id}')" title="Edit">✏</button>`;
       const delBtn=`<button class="rb dl" onclick="delEntry('${r.id}')" title="Hapus">🗑</button>`;
       return`<tr class="${cls}" id="row-${r.id}">
-        <td class="cbw"><input type="checkbox" ${chk} onchange="togSel('${view}','${r.id}',this.checked)"></td>
+        <td class="cbw"><input type="checkbox" ${chk} onchange="togSel('${view}','${r.id}',this.checked,event)"></td>
         ${dTd}
         <td class="tp">${esc(r.taskName)||'—'}</td>
         <td>${cardDisp}</td>
@@ -1158,9 +1164,26 @@ function renderTagChips(view){
 const setTF=(v,t)=>{S.tagF[v]=t;renderTagChips(v);renderTbl(v);};
 
 // ── SELECTION ──
-function togSel(view,id,chk){
+let _lastSelId={};
+function togSel(view,id,chk,evt){
+  if(evt&&evt.shiftKey&&_lastSelId[view]){
+    // Shift+click: select semua baris antara lastSel dan ini
+    const rows=filtered(view);
+    const ids=rows.map(r=>r.id);
+    const iA=ids.indexOf(_lastSelId[view]),iB=ids.indexOf(id);
+    if(iA>=0&&iB>=0){
+      const [from,to]=[Math.min(iA,iB),Math.max(iA,iB)];
+      ids.slice(from,to+1).forEach(rid=>{
+        chk?S.sel[view].add(rid):S.sel[view].delete(rid);
+        document.getElementById('row-'+rid)?.classList.toggle('rsel',chk);
+      });
+      updSelBar(view);
+      return;
+    }
+  }
   chk?S.sel[view].add(id):S.sel[view].delete(id);
   document.getElementById('row-'+id)?.classList.toggle('rsel',chk);
+  if(chk) _lastSelId[view]=id;
   updSelBar(view);
 }
 function selAll(view,chk){filtered(view).forEach(r=>chk?S.sel[view].add(r.id):S.sel[view].delete(r.id));renderTbl(view);}
@@ -1329,37 +1352,50 @@ function buildSPVReport(){
   const today=dk(d);
   const now=new Date();
   const periodLbl=`${DY[d.getDay()]}, ${d.getDate()} ${MO[d.getMonth()]} ${d.getFullYear()}`;
-  const buatPadaJam=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const spvJam=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+
+  // Auto-lock task SPV hari ini dan simpan timestamp SPV
+  autoLockDailyEntries();
+  S.reportTimestamps[today]=spvJam;
+  syncSToProfileData();
+  save();
+
   let allSections='';
   PROFILES.forEach((p,idx)=>{
-    const pd=PROFILE_DATA[p.id]||{entries:[],tags:[],dailyNotes:{}};
+    const pd=PROFILE_DATA[p.id]||{entries:[],tags:[],dailyNotes:{},reportTimestamps:{}};
     const rows=pd.entries.filter(e=>e.date===today);
     const totalSec=rows.reduce((a,r)=>a+toSec(r.min,r.sec),0);
     const h=Math.floor(totalSec/3600),m=Math.floor((totalSec%3600)/60),s=totalSec%60;
     const fmtT=r=>{const sec=toSec(r.min,r.sec),rh=Math.floor(sec/3600),rm=Math.floor((sec%3600)/60),rs=sec%60;return`${String(rh).padStart(2,'0')}:${String(rm).padStart(2,'0')}:${String(rs).padStart(2,'0')}`;};
     const bullets=rows.length?[...rows].sort((a,b)=>a.date.localeCompare(b.date)).map(r=>{
       const cardPart=r.link?`<a href="${esc(r.link)}" target="_blank">${esc(r.card||'—')}</a>`:esc(r.card||'—');
-      return`<li>${esc(r.taskName||'—')} | ${cardPart} | <strong>${esc(r.project||'—')}</strong> → ${fmtT(r)}</li>`;
+      const notePart=r.note?`<br><span style="font-size:12px;color:#666;margin-left:16px;">📝 ${esc(r.note)}</span>`:'';
+      return`<li>${esc(r.taskName||'—')} | ${cardPart} | <strong>${esc(r.project||'—')}</strong> → ${fmtT(r)}${notePart}</li>`;
     }).join('\n'):'<li style="color:#999">Tidak ada aktivitas</li>';
     const noteText=idx===0?(S.dailyNotes[today]||''):(pd.dailyNotes&&pd.dailyNotes[today]||'');
-    const noteHtml=noteText?`<p style="margin-top:10px;color:#666;font-style:italic;white-space:pre-wrap;">${esc(noteText)}</p>`:'';
-    // Tag profil custom (poin 5) — pakai p.tag dan p.tagColor kalau ada
+    const noteHtml=noteText?`<p style="margin-top:10px;color:#666;font-style:italic;white-space:pre-wrap;border-left:3px solid #ddd;padding-left:12px;">${esc(noteText)}</p>`:'';
     const profTag=p.tag?`<span style="background:${p.tagColor||'#d4a017'}22;color:${p.tagColor||'#d4a017'};border:1px solid ${p.tagColor||'#d4a017'}44;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:700;">${esc(p.tag)}</span> `:'';
+    // Timestamp laporan profil ini — kalau sudah pernah buat laporan hari ini
+    const profTs=(pd.reportTimestamps&&pd.reportTimestamps[today])||null;
+    const tsHtml=profTs
+      ?`<p style="margin-top:6px;font-size:11px;color:#aaa;">⏱ Laporan dibuat pada ${profTs}</p>`
+      :`<p style="margin-top:6px;font-size:11px;color:#ccc;font-style:italic;">⏱ Belum buat laporan hari ini</p>`;
     allSections+=`<div style="margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid #ddd;">
       <h2 style="font-size:16px;font-weight:800;margin-bottom:4px;">${profTag}${esc(p.name)} (${h} jam ${m} menit ${s} detik)</h2>
       <ul style="padding-left:20px;margin-top:8px;">${bullets}</ul>${noteHtml}
-      <p style="margin-top:8px;font-size:12px;color:#888;">${rows.length} task dikerjakan — laporan dibuat pada ${buatPadaJam}</p>
+      ${tsHtml}
     </div>`;
   });
   const html=`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Laporan Harian</title>
-<style>body{font-family:'Segoe UI',sans-serif;max-width:780px;margin:40px auto;padding:20px;color:#1a2040;line-height:1.7;}h1{font-size:22px;font-weight:800;margin-bottom:4px;}.sub{color:#888;font-size:13px;margin-bottom:24px;}ul li{margin-bottom:6px;font-size:14px;}a{color:#3a68e0;}strong{color:#1a2040;}</style>
+<style>body{font-family:'Segoe UI',sans-serif;max-width:780px;margin:40px auto;padding:20px;color:#1a2040;line-height:1.7;}h1{font-size:22px;font-weight:800;margin-bottom:4px;}.sub{color:#888;font-size:13px;margin-bottom:24px;}ul li{margin-bottom:10px;font-size:14px;}a{color:#3a68e0;}strong{color:#1a2040;}</style>
 </head><body>
 <h1>Laporan Harian</h1>
-<div class="sub">${periodLbl}</div>
+<div class="sub">${periodLbl} — SPV laporan dibuat pada ${spvJam}</div>
 ${allSections}
 </body></html>`;
   const blob=new Blob([html],{type:'text/html'});
   window.open(URL.createObjectURL(blob),'_blank');
+  refreshAll();
 }
 function buildReport(view){
   // SPV daily report: aggregate all profiles
