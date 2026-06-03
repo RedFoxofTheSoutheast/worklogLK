@@ -1164,25 +1164,28 @@ function renderTagChips(view){
 const setTF=(v,t)=>{S.tagF[v]=t;renderTagChips(v);renderTbl(v);};
 
 // ── SELECTION ──
-let _lastSelId={};
+var _lastSelId={};
 function togSel(view,id,chk,evt){
   if(evt&&evt.shiftKey&&_lastSelId[view]){
-    // Shift+click: select semua baris antara lastSel dan ini
-    const rows=filtered(view);
-    const ids=rows.map(r=>r.id);
-    const iA=ids.indexOf(_lastSelId[view]),iB=ids.indexOf(id);
+    var rows=filtered(view);
+    var ids=rows.map(function(r){return r.id;});
+    var iA=ids.indexOf(_lastSelId[view]);
+    var iB=ids.indexOf(id);
     if(iA>=0&&iB>=0){
-      const [from,to]=[Math.min(iA,iB),Math.max(iA,iB)];
-      ids.slice(from,to+1).forEach(rid=>{
-        chk?S.sel[view].add(rid):S.sel[view].delete(rid);
-        document.getElementById('row-'+rid)?.classList.toggle('rsel',chk);
+      var from=Math.min(iA,iB);
+      var to=Math.max(iA,iB);
+      ids.slice(from,to+1).forEach(function(rid){
+        if(chk){S.sel[view].add(rid);}else{S.sel[view].delete(rid);}
+        var row=document.getElementById('row-'+rid);
+        if(row) row.classList.toggle('rsel',chk);
       });
       updSelBar(view);
       return;
     }
   }
-  chk?S.sel[view].add(id):S.sel[view].delete(id);
-  document.getElementById('row-'+id)?.classList.toggle('rsel',chk);
+  if(chk){S.sel[view].add(id);}else{S.sel[view].delete(id);}
+  var row=document.getElementById('row-'+id);
+  if(row) row.classList.toggle('rsel',chk);
   if(chk) _lastSelId[view]=id;
   updSelBar(view);
 }
