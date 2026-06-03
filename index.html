@@ -1398,10 +1398,20 @@ ${allSections}
   refreshAll();
 }
 function buildReport(view){
-  // SPV daily report: aggregate all profiles
   if(isSPV()&&view==='daily'){buildSPVReport();return;}
   const rows=viewRows(view);
   if(!rows.length){toast('Tidak ada data','err');return;}
+
+  const now=new Date();
+  const buatPadaJam=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+
+  if(view==='daily'){
+    autoLockDailyEntries();
+    const today=dk(S.cursor.daily);
+    S.reportTimestamps[today]=buatPadaJam;
+    save();
+  }
+
   const totalSec=rows.reduce((a,r)=>a+toSec(r.min,r.sec),0);
   const name=getCurrentProfileName()||'Worklog';
   const taskCount=rows.length,cardCount=new Set(rows.map(r=>r.card)).size;
@@ -1415,13 +1425,14 @@ function buildReport(view){
   const fmtT=r=>{const sec=toSec(r.min,r.sec),h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;};
   const bullets=sorted.map(r=>{
     const cardPart=r.link?`<a href="${esc(r.link)}" target="_blank">${esc(r.card||'—')}</a>`:esc(r.card||'—');
-    return`<li>${esc(r.taskName||'—')} | ${cardPart} | <strong>${esc(r.project||'—')}</strong> → ${fmtT(r)}</li>`;
+    const notePart=r.note?`<br><span style="font-size:12px;color:#666;margin-left:16px;">📝 ${esc(r.note)}</span>`:'';
+    return`<li>${esc(r.taskName||'—')} | ${cardPart} | <strong>${esc(r.project||'—')}</strong> → ${fmtT(r)}${notePart}</li>`;
   }).join('\n');
   const noteText=view==='daily'?(S.dailyNotes[dk(S.cursor.daily)]||''):'';
-  const noteHtml=noteText?`<p style="margin-top:14px;color:#666;font-style:italic;white-space:pre-wrap;">${esc(noteText)}</p>`:'';
+  const noteHtml=noteText?`<p style="margin-top:14px;color:#666;font-style:italic;white-space:pre-wrap;border-left:3px solid #ddd;padding-left:12px;">${esc(noteText)}</p>`:'';
   const h=Math.floor(totalSec/3600),m=Math.floor((totalSec%3600)/60),s=totalSec%60;
   const html=`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><title>Laporan ${esc(name)}</title>
-<style>body{font-family:'Segoe UI',sans-serif;max-width:700px;margin:40px auto;padding:20px;color:#1a2040;line-height:1.7;}h1{font-size:22px;font-weight:800;margin-bottom:4px;}.sub{color:#888;font-size:13px;margin-bottom:20px;}ul{padding-left:20px;}li{margin-bottom:8px;font-size:14px;}a{color:#3a68e0;}strong{color:#1a2040;}.footer{margin-top:20px;font-size:13px;color:#555;border-top:1px solid #ddd;padding-top:12px;}</style>
+<style>body{font-family:'Segoe UI',sans-serif;max-width:700px;margin:40px auto;padding:20px;color:#1a2040;line-height:1.7;}h1{font-size:22px;font-weight:800;margin-bottom:4px;}.sub{color:#888;font-size:13px;margin-bottom:20px;}ul{padding-left:20px;}li{margin-bottom:10px;font-size:14px;}a{color:#3a68e0;}strong{color:#1a2040;}.footer{margin-top:20px;font-size:13px;color:#555;border-top:1px solid #ddd;padding-top:12px;}</style>
 </head><body>
 <h1>${esc(name)} (${h} jam ${m} menit ${s} detik)</h1>
 <div class="sub">${periodLbl}</div>
@@ -1431,6 +1442,7 @@ ${noteHtml}
 </body></html>`;
   const blob=new Blob([html],{type:'text/html'});
   window.open(URL.createObjectURL(blob),'_blank');
+  if(view==='daily') refreshAll();
 }
 
 // ── DATE CURSOR ──
