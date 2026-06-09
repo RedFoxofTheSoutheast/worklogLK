@@ -1033,9 +1033,9 @@ function viewRows(view){
 function filtered(view){
   let rows=viewRows(view);
   const q=(document.getElementById('q-'+view)?.value||'').toLowerCase();
-  const tf=S.tagF[view];
+  var tf=S.tagF[view];
   if(q) rows=rows.filter(r=>((r.taskName||'')+(r.card||'')+(r.note||'')+(r.project||'')).toLowerCase().includes(q));
-  if(tf) rows=rows.filter(r=>r.project===tf);
+  if(tf&&tf.size>0) rows=rows.filter(r=>tf.has(r.project));
   const{col,dir}=S.sort[view];
   if(col) rows=[...rows].sort((a,b)=>{
     let av=a[col]??'',bv=b[col]??'';
@@ -1153,15 +1153,25 @@ function doSort(view,col){
 function renderTagChips(view){
   const used=new Set(S.entries.map(e=>e.project));
   const active=S.tagF[view];
-  let html=`<button class="tc${!active?' all':''}" onclick="setTF('${view}',null)">Semua</button>`;
+  var noFilter = !active || active.size === 0;
+  let html = `<button class="tc${noFilter ? ' all' : ''}" onclick="setTF('${view}',null)">Semua</button>`;
   S.tags.filter(t=>used.has(t.name)).forEach(t=>{
-    const isA=active===t.name;
-    const sty=isA?`background:${t.color};border-color:${t.color};color:#fff`:`border-color:${t.color}55;color:${t.color}`;
+    var isA=active&&active.has&&active.has(t.name);
+    var sty=isA?`background:${t.color};border-color:${t.color};color:#fff`:`border-color:${t.color}55;color:${t.color}`;
     html+=`<button class="tc" style="${sty}" onclick="setTF('${view}','${t.name}')">${t.name}</button>`;
   });
   document.getElementById('tf-'+view).innerHTML=html;
 }
-const setTF=(v,t)=>{S.tagF[v]=t;renderTagChips(v);renderTbl(v);};
+function setTF(v,t){
+  if(t===null){S.tagF[v]=new Set();}
+  else{
+    if(!S.tagF[v]) S.tagF[v]=new Set();
+    if(S.tagF[v].has(t)) S.tagF[v].delete(t);
+    else S.tagF[v].add(t);
+  }
+  renderTagChips(v);
+  renderTbl(v);
+}
 
 // ── SELECTION ──
 var _lastSelId={};
