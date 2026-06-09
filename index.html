@@ -874,11 +874,6 @@ function isSPV(){
   return PROFILES[0] && PROFILES[0].id === ACTIVE_PROFILE_ID;
 }
 
-function isSPV(){
-  return PROFILES[0] && PROFILES[0].id === ACTIVE_PROFILE_ID;
-}
-}
-
 function getActiveEntry(){
   return (S.entries||[]).find(e=>e.swRunning)||null;
 }
@@ -1901,7 +1896,6 @@ window.addEventListener('beforeunload',e=>{
     e.returnValue='Ada stopwatch yang masih berjalan!';
   }
 });
-
 // ── CLOCK ──
 function tick(){
   const n=new Date();
