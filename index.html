@@ -769,7 +769,11 @@ ACTIVE_PROFILE_ID = (localActive && PROFILES.find(p=>p.id===localActive)) ? loca
       loadProfileIntoS(ACTIVE_PROFILE_ID, true);
       
       // Update tampilan aplikasi setelah data berhasil didapatkan
-      refreshAll();
+      try{
+        refreshAll();
+      }catch(e){
+        console.error('refreshAll error:', e);
+    }
       hideLoading();
       setupLivePresence();
       listenLiveStatus();
@@ -796,10 +800,14 @@ ACTIVE_PROFILE_ID = (localActive && PROFILES.find(p=>p.id===localActive)) ? loca
         ACTIVE_PROFILE_ID = activeRaw && PROFILES.find(p => p.id === activeRaw) ? activeRaw : PROFILES[0].id;
       }
       loadProfileIntoS(ACTIVE_PROFILE_ID, true);
-      refreshAll();
-      hideLoading();
-      setupLivePresence();
-      listenLiveStatus();
+      try{
+  refreshAll();
+}catch(e){
+  console.error('refreshAll fallback error:', e);
+}
+hideLoading();
+setupLivePresence();
+listenLiveStatus();
     });
 
   } catch(e) {
@@ -860,6 +868,10 @@ function switchProfile(profileId){
 function getCurrentProfileName(){
   const p=PROFILES.find(x=>x.id===ACTIVE_PROFILE_ID);
   return p?p.name:'—';
+}
+
+function isSPV(){
+  return PROFILES[0] && PROFILES[0].id === ACTIVE_PROFILE_ID;
 }
 
 function isSPV(){
